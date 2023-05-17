@@ -19,15 +19,21 @@ public class InputManager : NinjaMonoBehaviour {
     void Awake() {
         sceneCamera = sceneCamera??Camera.current;
     }
-    public bool IsHoveringMap { get; private set;}
+    public bool IsHoveringMap { 
+        get {
+            Ray ray = sceneCamera.ScreenPointToRay(MousePosition);
+            RaycastHit hit;
+            if(Physics.Raycast(ray, out hit, 100, placementLayerMask)) {
+                return true;
+            }
+            return false;
+        }
+    }
     public Vector3 GetSelectedMapPosition() {
         Ray ray = sceneCamera.ScreenPointToRay(MousePosition);
         RaycastHit hit;
         if(Physics.Raycast(ray, out hit, 100, placementLayerMask)) {
             lastPosition = hit.point;
-            IsHoveringMap = true;
-        } else {
-            IsHoveringMap = false;
         }
         return lastPosition;
     }

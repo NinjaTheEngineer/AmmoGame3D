@@ -8,7 +8,8 @@ public class PlacementSystem : NinjaMonoBehaviour {
     [SerializeField] InputManager inputManager;
     [SerializeField] Grid grid;
     [SerializeField] GameObject placeObject;
-    GameObject draggingObject;
+    GameObject grabbedObject;
+    public Vector3 PickedUpPosition {get; private set;}
     public Vector3 MousePosition {
         get {
             var logId = "MouseInCellPosition_get";
@@ -37,51 +38,148 @@ public class PlacementSystem : NinjaMonoBehaviour {
             return cellPosition;
         }
     }
+    void Start() {
+        var logId = "Start";
+        StartCoroutine(MoveGrabbedObjectRoutine());    
+    }
+    public float smoothness = 5f;
+    bool raisingObject = false;
+    public float TargetHeight { get; private set;}
+    IEnumerator MoveGrabbedObjectRoutine() {
+        var logId = "MoveGrabbedObjectRoutine";
+        var smallWait = new WaitForSeconds(0.1f);
+        logd(logId, "Starting MoveGrabbedObjectRoutine");
 
+        while (true) {
+            if (grabbedObject == null) {
+                yield return smallWait;
+                continue;
+            }
+            var mousePos = MousePosition;
+            var objTransform = grabbedObject.transform;
+            var objPosition = grabbedObject.transform.position;
+
+            // Drag the object towards the mouse position
+            mousePos.y = objPosition.y;
+            var targetPos = Vector3.Lerp(objPosition, mousePos, smoothness * Time.deltaTime);
+
+            if(raisingObject) {
+                float step = grabbingSpeed * Time.deltaTime;
+                float distanceToTarget = Mathf.Abs(objPosition.y - grabbingHeight);
+                targetPos = new Vector3(targetPos.x, objPosition.y + step, targetPos.z);
+
+                // Raise the object towards the grabbing height
+                if (distanceToTarget < 0.01f || ((objPosition.y - grabbingHeight) * (grabbingHeight - objPosition.y + step) >= 0)) {
+                    raisingObject = false;
+                    targetPos = new Vector3(targetPos.x, grabbingHeight, targetPos.z);
+                } else {
+                    targetPos = new Vector3(targetPos.x, objPosition.y + step, targetPos.z);
+                }
+            }
+            objTransform.position = targetPos;
+            yield return null;
+        }
+    }
+    public Vector3 PointedCellPosition { 
+        get {
+            var logId = "PointedCellPosition_get";
+            var mousePos = MousePosition;
+            var mouseToCell = grid.WorldToCell(mousePos);
+            var pointedCellPos = grid.GetCellCenterWorld(mouseToCell);
+            pointedCellPos.y = 0;
+            return pointedCellPos;
+        }
+    }
     void Update() {
         var logId = "Update";
         var mousePos = MousePosition;
         var mouseToCell = grid.WorldToCell(mousePos);
-        mouseToCell.y = 0;
-        var targetCellPos = grid.GetCellCenterWorld(mouseToCell);
-        targetCellPos.y = 0;
         mouseIndicator.transform.position = mousePos;
-        if(draggingObject==null) {
-            cellIndicator.transform.position = targetCellPos;
-        } else {
-            draggingObject.transform.position = mousePos;
+        if(grabbedObject==null) {
+            cellIndicator.transform.position = PointedCellPosition;
         }
 
         if(Input.GetMouseButtonDown(0)) {
-            OnCellInteraction(targetCellPos);
+            OnCellInteraction();
         }
     }
-    void OnCellInteraction(Vector3 targetCellPos) {
+    public void ReleaseGrabbedObject() {
+        var logId = "ReleaseGrabbedObject";
+        if(grabbedObject==null) {
+            logw(logId, "GrabbedObject="+grabbedObject.logf());
+            return;
+        }
+        var isHoveringMap = inputManager.IsHoveringMap;
+        var dropPosition = isHoveringMap ? PointedCellPosition : PickedUpPosition;
+        logd(logId, "Dropping object="+grabbedObject.logf()+" at ="+dropPosition.logf()+" while IsHoveringMap="+isHoveringMap+" => DragEnd");
+        grabbedObject.transform.position = dropPosition;
+        grabbedObject.GetComponent<IDraggable>().OnDragEnd();
+        grabbedObject = null;
+        cellIndicator.transform.position = dropPosition;
+        cellIndicator.SetActive(true);
+    }
+    void OnCellInteraction() {
         var logId = "HandleObjectPlacement";
-        if(draggingObject!=null) {
-            logd(logId, "Placing DraggingObject="+draggingObject.logf());
-            draggingObject.transform.position = targetCellPos;
-            draggingObject.GetComponent<IDraggable>().OnDragEnd();
-            draggingObject = null;
-            cellIndicator.SetActive(true);
+        if(inputManager==null) {
+            logw(logId, "InputManager="+inputManager.logf()+" => no-op");
+            return;
+        }
+        if(grabbedObject!=null) {
+            logd(logId, "GrabbedObject="+grabbedObject.logf()+" => ReleasingGrabbedObject");
+            ReleaseGrabbedObject();
             return;
         } 
-        draggingObject = inputManager?.GetGrabbableObject();
-        if(draggingObject==null) {
-            SpawnObject(targetCellPos);
+        var grabbableObject = inputManager.GetGrabbableObject();
+        if(grabbableObject==null) {
+            var isHoveringMap = inputManager.IsHoveringMap;
+            if(isHoveringMap) {
+                SpawnObject();
+            }
             return;
         }
-        draggingObject.GetComponent<IDraggable>().OnDragStart();
+        PickedUpPosition = grabbableObject.transform.position;
+        grabbedObject = grabbableObject;
+        TargetHeight = grabbingHeight;
+        raisingObject = true;
+        //StartCoroutine(GrabObjectRoutine(grabbableObject));
+        grabbableObject.GetComponent<IDraggable>().OnDragStart();
         cellIndicator.SetActive(false);
     }
-    void SpawnObject(Vector3 targetCellPos) {
+    void SpawnObject() {
         var logId = "SpawnObject";
-        var newObject = Instantiate(placeObject, targetCellPos, Quaternion.identity);
-        logd(logId, "GrabbableObject="+draggingObject.logf()+" => Instantiating new object="+newObject.logf()+" at cellPos="+targetCellPos, true);
-
+        var pointedCellPos = PointedCellPosition;
+        var newObject = Instantiate(placeObject, pointedCellPos, Quaternion.identity);
+        logd(logId, "GrabbableObject="+grabbedObject.logf()+" => Instantiating new object="+newObject.logf()+" at pointedCellPos="+pointedCellPos, true);
     }
-    void PickupObject() {
-        
+    [SerializeField] float grabbingHeight = 2f;
+    [SerializeField] float grabbingSpeed = 5f;
+    IEnumerator GrabObjectRoutine(GameObject obj) {
+        var logId = "GrabObjectRoutine";
+        logd(logId, "Starting GrabObjectRoutine");
+        if(obj==null) {
+            logw(logId, "Tried to grab object="+obj.logf()+" => no-op");
+            yield break;
+        }
+        grabbedObject = obj;
+        var objTransform = grabbedObject.transform;
+        var objPosition = grabbedObject.transform.position;
+        float distanceToTarget = Mathf.Abs(objPosition.y - grabbingHeight);
+        float step = grabbingSpeed * Time.deltaTime; // Calculate the step using a fixed speed
+
+        while(grabbedObject!=null && distanceToTarget > 0.01f) {
+            objPosition = new Vector3(objPosition.x, objPosition.y + step, objPosition.z);
+            objTransform.position = objPosition;
+            distanceToTarget = Mathf.Abs(objPosition.y - grabbingHeight);
+
+            if((objPosition.y - grabbingHeight) * (grabbingHeight - objPosition.y + step) >= 0) {
+                objPosition = new Vector3(objPosition.x, grabbingHeight, objPosition.z);
+                objTransform.position = objPosition;
+                break;
+            }
+
+            yield return null;
+        }
+        logd(logId, "Ended GrabObjectRoutine");
     }
     public void PlaceObjectInCell(GameObject placedObject) {
         var logId = "PlaceObjectInCell";

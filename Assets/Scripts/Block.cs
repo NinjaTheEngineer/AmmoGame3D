@@ -9,11 +9,13 @@ public class Block : NinjaMonoBehaviour, IDraggable {
     Color mainColor;
     [SerializeField] float draggingHeight = 2f;
     [SerializeField] float speed = 2f;
-    private void Start() {
+    bool ignoreCollisions = true;
+    void Start() {
         mainColor = meshRenderer.material.color;
     } 
     public void OnDragStart() {
         var logId = "OnPointerEnter";
+        ignoreCollisions = true;
         logd(logId, name.logf()+" is being pointed => Change color.");
         meshRenderer.material.color = grabbedColor;
         //StartCoroutine(AnimatePositionRoutine());
@@ -21,6 +23,7 @@ public class Block : NinjaMonoBehaviour, IDraggable {
 
     public void OnDragEnd() {
         var logId = "OnPointerExit";
+        ignoreCollisions = false;
         logd(logId, name.logf()+" on pointer exit => Change color.");
         meshRenderer.material.color = mainColor;
     }
@@ -33,5 +36,14 @@ public class Block : NinjaMonoBehaviour, IDraggable {
             yield return true;
         }
         logd(logId, "Ended AnimatePositionRoutine");
+    }
+    void OnTriggerEnter(Collider other) {
+        var logId = "OnTriggerEnter";
+        if(other==null || other.gameObject==null) {
+            logw(logId, "Other="+other.logf()+" => no-op");
+            return;
+        }
+        logd(logId, "OnTriggerEnter with "+other.logf());
+        
     }
 }

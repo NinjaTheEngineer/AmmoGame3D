@@ -714,16 +714,11 @@ MonoBehaviour:
   cellIndicator: {fileID: 375600738}
   inputManager: {fileID: 391393484}
   grid: {fileID: 828612058}
-  placeObject: {fileID: 1503970087}
-  smoothness: 10
+  placeObject: {fileID: 6594471223397091486, guid: e51383adbcb37e543a8eedf7d065e95f,
+    type: 3}
+  smoothness: 5
   grabbingHeight: 2
   grabbingSpeed: 7
---- !u!1 &1503970087 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 6594471223397091486, guid: e51383adbcb37e543a8eedf7d065e95f,
-    type: 3}
-  m_PrefabInstance: {fileID: 3269786491364216549}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1566507180
 GameObject:
   m_ObjectHideFlags: 0

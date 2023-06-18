@@ -7,13 +7,17 @@ public class PlacementSystem : NinjaMonoBehaviour {
     [SerializeField] GameObject mouseIndicator, cellIndicator;
     [SerializeField] InputManager inputManager;
     [SerializeField] Grid grid;
-    [SerializeField] GameObject placeObject;
-    GameObject grabbedObject;
-    public Vector3 PickedUpPosition { get; private set; }
+    [SerializeField] Block placeBlock;
+    Block grabbedBlock;
     public float smoothness = 5f;
     public float loweringSpeed = 10f;
     [SerializeField] float floorHeight = 0f;
+    [SerializeField] float grabbingHeight = 2f;
+    [SerializeField] float grabbingSpeed = 5f;
+    List<Block> placedBlocks = new List<Block>(49);
+    public Vector3 PickedUpPosition { get; private set; }
     public float TargetHeight { get; private set; }
+    
     public Vector3 MousePosition {
         get {
             var logId = "MousePosition_get";
@@ -45,14 +49,14 @@ public class PlacementSystem : NinjaMonoBehaviour {
         logd(logId, "Starting MoveGrabbedObjectRoutine.");
         WaitForSeconds smallWait = new WaitForSeconds(0.1f);
         while(true) {
-            if(grabbedObject==null) {
+            if(grabbedBlock==null) {
                 //There is no grabbedObject or its targetHeight is on the floor.
                 yield return smallWait;
                 continue;
             }
 
             Vector3 mousePos = MousePosition;
-            Vector3 objPosition = grabbedObject.transform.position;
+            Vector3 objPosition = grabbedBlock.transform.position;
 
             // Drag the object towards the mouse position
             var targetHeight = TargetHeight;
@@ -71,7 +75,7 @@ public class PlacementSystem : NinjaMonoBehaviour {
                 }
             }
 
-            grabbedObject.transform.position = targetPos;
+            grabbedBlock.transform.position = targetPos;
             yield return null;
         }
     }
@@ -91,7 +95,7 @@ public class PlacementSystem : NinjaMonoBehaviour {
         Vector3Int mouseToCell = grid.WorldToCell(mousePos);
         mouseIndicator.transform.position = mousePos;
 
-        if(grabbedObject == null) {
+        if(grabbedBlock == null) {
             cellIndicator.transform.position = PointedCellPosition;
         }
 
@@ -106,9 +110,9 @@ public class PlacementSystem : NinjaMonoBehaviour {
             return;
         }
 
-        if(grabbedObject!=null) {
-            logd(logId, "Already grabbing another object="+grabbedObject.logf()+" => ReleaseGrabbedObject");
-            ReleaseGrabbedObject();
+        if(grabbedBlock!=null) {
+            logd(logId, "Already grabbing another object="+grabbedBlock.logf()+" => ReleaseGrabbedObject");
+            ReleaseGrabbedBlock();
             return;
         }
 
@@ -117,102 +121,109 @@ public class PlacementSystem : NinjaMonoBehaviour {
             bool isHoveringMap = inputManager.IsHoveringMap;
             if (isHoveringMap) {
                 logd(logId, "");
-                SpawnObject();
+                SpawnBlock();
             }
             return;
+        } else {
+            logd(logId, "GrabObject="+grabbableObject.logf());
+            Block grabbableBlock = grabbableObject.GetComponent<Block>();
+            if(grabbableBlock==null) {
+                logw(logId, "GrabbableBlock="+grabbableBlock.logf()+" => no-op");
+                return;
+            }
+            GrabBlock(grabbableBlock);
         }
-        var objectCellPos = grid.WorldToCell(grabbableObject.transform.position);
+    }
+    public void GrabBlock(Block grabbableBlock) {
+        var logId = "GrabObject";
+        var objectCellPos = grid.WorldToCell(grabbableBlock.transform.position);
         var pickedUpPos = grid.GetCellCenterWorld(objectCellPos);
         pickedUpPos.y = floorHeight;
         PickedUpPosition = pickedUpPos;
-        grabbedObject = grabbableObject;
+        grabbedBlock = grabbableBlock;
         TargetHeight = grabbingHeight;
-        grabbableObject.GetComponent<IDraggable>()?.OnDragStart();
+        grabbableBlock.GetComponent<IDraggable>()?.OnDragStart();
+        placedBlocks.Remove(grabbedBlock);
         cellIndicator.SetActive(false);
     }
-    public void ReleaseGrabbedObject() {
-        var logId = "ReleaseGrabbedObject";
-        if(grabbedObject == null) {
-            logw(logId,"GrabbedObject is null => no-op");
+    public void ReleaseGrabbedBlock() {
+        var logId = "ReleaseGrabbedBlock";
+        if(grabbedBlock == null) {
+            logw(logId,"GrabbedBlock is null => no-op");
             return;
         }
-
         bool isHoveringMap = inputManager != null && inputManager.IsHoveringMap;
         Vector3 dropPosition = isHoveringMap ? PointedCellPosition : PickedUpPosition;
-        StartCoroutine(LowerGrabbedObjectRoutine(dropPosition));
+        var blockAtDropPosition = GetBlockAt(dropPosition);
+        var canMerge = blockAtDropPosition?.Id == grabbedBlock.Id;
+        logd(logId, "CanMerge="+canMerge+" BlockAtDropPosition="+blockAtDropPosition.logf()+" GrabbedBlock="+grabbedBlock.logf());
+        if(blockAtDropPosition==null || canMerge) {
+            StartCoroutine(LowerGrabbedBlockRoutine(dropPosition, blockAtDropPosition));
+        }
         cellIndicator.transform.position = dropPosition;
         cellIndicator.SetActive(true);
     }
 
-IEnumerator LowerGrabbedObjectRoutine(Vector3 dropPosition) {
-    var logId = "LowerGrabbedObjectRoutine";
-    Transform objTransform = grabbedObject.transform;
-    grabbedObject.GetComponent<IDraggable>()?.OnDragEnd();
-    grabbedObject = null;
-
-    while(grabbedObject==null || grabbedObject.transform!=objTransform) {
-        float distanceToTarget = Mathf.Abs((objTransform.position - dropPosition).magnitude);
-        Vector3 targetPos = Vector3.Lerp(objTransform.position, dropPosition, loweringSpeed * Time.deltaTime);
-        // Lower the object towards the drop position
-        if(distanceToTarget < 0.01f) {
-            logd(logId, "DistanceToTarget=" + distanceToTarget + " => breaking");
-            break;
+    private Block GetBlockAt(Vector3 position) {
+        var logId = "GetBlockAt";
+        Block blockAtPos = null;
+        for (int i = 0; i < placedBlocks.Count; i++) {
+            var currentBlock = placedBlocks[i];
+            if(currentBlock==null) {
+                continue;
+            }
+            var currentBlockPosition = currentBlock.transform.position;
+            if(currentBlockPosition.x==position.x && currentBlockPosition.z==position.z){
+                blockAtPos = currentBlock;
+            }
         }
-
-        objTransform.position = targetPos;
-        yield return true;
-    }
-    objTransform.position = dropPosition;
-}
-
-    void SpawnObject() {
-        var logId = "SpawnObject";
-        Vector3 pointedCellPos = PointedCellPosition;
-        GameObject newObject = Instantiate(placeObject, pointedCellPos, Quaternion.identity);
-        logd(logId, "Spawned object="+newObject.logf()+" at CellPosition="+pointedCellPos.logf());
+        return blockAtPos;
     }
 
-    [SerializeField] float grabbingHeight = 2f;
-    [SerializeField] float grabbingSpeed = 5f;
+    IEnumerator LowerGrabbedBlockRoutine(Vector3 dropPosition, Block blockToMerge=null) {
+        var logId = "LowerGrabbedObjectRoutine";
+        var loweredBlock = grabbedBlock;
+        var loweredBlockTransform = loweredBlock.transform;
+        grabbedBlock.GetComponent<IDraggable>()?.OnDragEnd();
+        grabbedBlock = null;
 
-    IEnumerator GrabObjectRoutine(GameObject obj) {
-        if (obj == null)
-        {
-            Debug.LogWarning("Tried to grab null object");
-            yield break;
-        }
-
-        grabbedObject = obj;
-        Transform objTransform = grabbedObject.transform;
-        Vector3 objPosition = grabbedObject.transform.position;
-        float distanceToTarget = Mathf.Abs(objPosition.y - grabbingHeight);
-        float step = grabbingSpeed * Time.deltaTime;
-
-        while (grabbedObject != null && distanceToTarget > 0.01f)
-        {
-            objPosition = new Vector3(objPosition.x, objPosition.y + step, objPosition.z);
-            objTransform.position = objPosition;
-            distanceToTarget = Mathf.Abs(objPosition.y - grabbingHeight);
-
-            if (Mathf.Sign(objPosition.y - grabbingHeight) == Mathf.Sign(grabbingHeight - objPosition.y + step))
-            {
-                objPosition = new Vector3(objPosition.x, grabbingHeight, objPosition.z);
-                objTransform.position = objPosition;
+        while(grabbedBlock==null || grabbedBlock.transform!=loweredBlockTransform) {
+            if(loweredBlockTransform==null) {
+                logd(logId, "LoweredObjectTransform is null, probably merged => breaking");
+                yield break;
+            }
+            float distanceToTarget = Mathf.Abs((loweredBlockTransform.position - dropPosition).magnitude);
+            Vector3 targetPos = Vector3.Lerp(loweredBlockTransform.position, dropPosition, loweringSpeed * Time.deltaTime);
+            // Lower the object towards the drop position
+            if(distanceToTarget < 0.01f) {
+                logd(logId, "DistanceToTarget=" + distanceToTarget + " => breaking");
                 break;
             }
 
-            yield return null;
+            loweredBlockTransform.position = targetPos;
+            yield return true;
         }
+        if(blockToMerge) {
+            placedBlocks.Remove(blockToMerge);
+            loweredBlock.MergeWith(blockToMerge);
+        }
+        loweredBlockTransform.position = dropPosition;
+        placedBlocks.Add(loweredBlock);
     }
-
-    public void PlaceObjectInCell(GameObject placedObject)
-    {
-        if (placedObject == null)
-        {
-            Debug.LogWarning("Tried to place null object");
+    void SpawnBlock() {
+        var logId = "SpawnBlock";
+        Vector3 pointedCellPos = PointedCellPosition;
+        Block newBlock = Instantiate(placeBlock, pointedCellPos, Quaternion.identity);
+        placedBlocks.Add(newBlock);
+        logd(logId, "Spawned block="+newBlock.logf()+" at CellPosition="+pointedCellPos.logf());
+    }
+    public void PlaceBlockInCell(Block blockToPlace) {
+        var logId = "PlaceBlockInCell";
+        if(blockToPlace == null) {
+            logw(logId, "Tried to place null object");
             return;
         }
 
-        placedObject.transform.position = grid.CellToWorld(TargetCellPosition);
+        blockToPlace.transform.position = grid.CellToWorld(TargetCellPosition);
     }
 }

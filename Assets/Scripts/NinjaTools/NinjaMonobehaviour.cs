@@ -8,7 +8,7 @@ public class NinjaMonoBehaviour : MonoBehaviour {
         if(ignoreDuplicates && lastIdMessage.ContainsKey(id) && lastIdMessage[id]==message) {
             return;
         }
-        Debug.Log(name + "::" + id + "->" + message);
+        Debug.Log(name + "::" + id + "->" + message, this);
         if(lastIdMessage.ContainsKey(id)) {
             lastIdMessage[id] = message;
         } else {
@@ -20,7 +20,7 @@ public class NinjaMonoBehaviour : MonoBehaviour {
         if(ignoreDuplicates && lastIdMessage.ContainsKey(id) && lastIdMessage[id]==message) {
             return;
         }
-        Debug.LogWarning(name + "::" + id + "->" + message);
+        Debug.LogWarning(name + "::" + id + "->" + message, this);
         if(lastIdMessage.ContainsKey(id)) {
             lastIdMessage[id] = message;
         } else {
@@ -32,7 +32,7 @@ public class NinjaMonoBehaviour : MonoBehaviour {
         if(ignoreDuplicates && lastIdMessage.ContainsKey(id) && lastIdMessage[id]==message) {
             return;
         }
-        Debug.LogError(name + "::" + id + "->" + message);
+        Debug.LogError(name + "::" + id + "->" + message, this);
         if(lastIdMessage.ContainsKey(id)) {
             lastIdMessage[id] = message;
         } else {

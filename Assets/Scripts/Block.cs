@@ -5,6 +5,8 @@ using NinjaTools;
 using TMPro;
 
 public class Block : NinjaMonoBehaviour, IDraggable, IMergeable {
+    public Vector3 LastPosition { get; set; }
+    public bool AtPurchase { get; private set; }
     [SerializeField] MeshRenderer meshRenderer;
     [SerializeField] Color grabbedColor;
     Color mainColor;
@@ -12,6 +14,10 @@ public class Block : NinjaMonoBehaviour, IDraggable, IMergeable {
     [SerializeField] float speed = 2f;
     [SerializeField] TextMeshProUGUI idText;
     [SerializeField] long _id = 1;
+    private PurchasePlace initPurchasePlace;
+    public void SetPurchasePlace(PurchasePlace purchasePlace) {
+        initPurchasePlace = purchasePlace;
+    }
     public long Id {
         get => _id;
         set {
@@ -21,18 +27,24 @@ public class Block : NinjaMonoBehaviour, IDraggable, IMergeable {
     }
     void Start() {
         mainColor = meshRenderer.material.color;
+        AtPurchase = true;
     } 
     public void OnDragStart() {
-        var logId = "OnPointerEnter";
-        logd(logId, name.logf()+" is being pointed => Change color.");
+        var logId = "OnDragStart";
+        logd(logId, name.logf()+" is drag start => Change color.");
         meshRenderer.material.color = grabbedColor;
-        //StartCoroutine(AnimatePositionRoutine());
     }
 
     public void OnDragEnd() {
-        var logId = "OnPointerExit";
-        logd(logId, name.logf()+" on pointer exit => Change color.");
+        var logId = "OnDragEnd";
+        logd(logId, name.logf()+" on drag end => Change color.");
         meshRenderer.material.color = mainColor;
+    }
+    public void OnDragSuccess() {
+        LastPosition = transform.position;
+        AtPurchase = false;
+        initPurchasePlace?.FreePurchasePlace();
+        initPurchasePlace = null;
     }
     IEnumerator AnimatePositionRoutine() {
         var logId = "AnimatePositionRoutine";

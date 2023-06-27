@@ -5,4 +5,5 @@ using UnityEngine;
 public interface IDraggable {
     public void OnDragStart(); 
     public void OnDragEnd(); 
+    public void OnDragSuccess();
 }

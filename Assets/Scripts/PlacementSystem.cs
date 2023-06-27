@@ -8,13 +8,13 @@ public class PlacementSystem : NinjaMonoBehaviour {
     [SerializeField] InputManager inputManager;
     [SerializeField] Grid grid;
     [SerializeField] Block placeBlock;
-    Block grabbedBlock;
     public float smoothness = 5f;
     public float loweringSpeed = 10f;
     [SerializeField] float floorHeight = 0f;
     [SerializeField] float grabbingHeight = 2f;
     [SerializeField] float grabbingSpeed = 5f;
     List<Block> placedBlocks = new List<Block>(49);
+    public Block GrabbedBlock { get; private set; }
     public Vector3 PickedUpPosition { get; private set; }
     public float TargetHeight { get; private set; }
     
@@ -43,20 +43,36 @@ public class PlacementSystem : NinjaMonoBehaviour {
     void Start() {
         StartCoroutine(MoveGrabbedObjectRoutine());
     }
+    void Update() {
+        Vector3 mousePos = MousePosition;
+        Vector3Int mouseToCell = grid.WorldToCell(mousePos);
+
+        var grabbingBlock = GrabbedBlock!=null;
+        
+        mouseIndicator.transform.position = mousePos;
+        mouseIndicator.SetActive(!grabbingBlock);
+
+        cellIndicator.transform.position = PointedCellPosition;
+        cellIndicator.SetActive(IsHoveringMap);
+
+        if(Input.GetMouseButtonDown(0)) {
+            OnMouseClick();
+        }
+    }
 
     IEnumerator MoveGrabbedObjectRoutine() {
         var logId = "MoveGrabbedObjectRoutine";
         logd(logId, "Starting MoveGrabbedObjectRoutine.");
         WaitForSeconds smallWait = new WaitForSeconds(0.1f);
         while(true) {
-            if(grabbedBlock==null) {
+            if(GrabbedBlock==null) {
                 //There is no grabbedObject or its targetHeight is on the floor.
                 yield return smallWait;
                 continue;
             }
 
             Vector3 mousePos = MousePosition;
-            Vector3 objPosition = grabbedBlock.transform.position;
+            Vector3 objPosition = GrabbedBlock.transform.position;
 
             // Drag the object towards the mouse position
             var targetHeight = TargetHeight;
@@ -75,7 +91,7 @@ public class PlacementSystem : NinjaMonoBehaviour {
                 }
             }
 
-            grabbedBlock.transform.position = targetPos;
+            GrabbedBlock.transform.position = targetPos;
             yield return null;
         }
     }
@@ -90,19 +106,6 @@ public class PlacementSystem : NinjaMonoBehaviour {
         }
     }
 
-    void Update() {
-        Vector3 mousePos = MousePosition;
-        Vector3Int mouseToCell = grid.WorldToCell(mousePos);
-        mouseIndicator.transform.position = mousePos;
-
-        if(grabbedBlock == null) {
-            cellIndicator.transform.position = PointedCellPosition;
-        }
-
-        if(Input.GetMouseButtonDown(0)) {
-            OnMouseClick();
-        }
-    }
     void OnMouseClick() {
         var logId = "OnMouseClick";
         if(inputManager==null) {
@@ -110,18 +113,17 @@ public class PlacementSystem : NinjaMonoBehaviour {
             return;
         }
 
-        if(grabbedBlock!=null) {
-            logd(logId, "Already grabbing another object="+grabbedBlock.logf()+" => ReleaseGrabbedObject");
+        if(GrabbedBlock!=null) {
+            logd(logId, "Already grabbing another object="+GrabbedBlock.logf()+" => ReleaseGrabbedObject");
             ReleaseGrabbedBlock();
             return;
         }
 
         GameObject grabbableObject = inputManager.GetGrabbableObject();
         if(grabbableObject==null) {
-            bool isHoveringMap = inputManager.IsHoveringMap;
-            if (isHoveringMap) {
-                logd(logId, "");
-                SpawnBlock();
+            if (IsHoveringMap) {
+                logd(logId, "Clicked on Map");
+                //SpawnBlock();
             }
             return;
         } else {
@@ -134,34 +136,48 @@ public class PlacementSystem : NinjaMonoBehaviour {
             GrabBlock(grabbableBlock);
         }
     }
+    public bool IsHoveringMap => inputManager==null?false:inputManager.IsHoveringMap;
     public void GrabBlock(Block grabbableBlock) {
         var logId = "GrabObject";
         var objectCellPos = grid.WorldToCell(grabbableBlock.transform.position);
-        var pickedUpPos = grid.GetCellCenterWorld(objectCellPos);
-        pickedUpPos.y = floorHeight;
-        PickedUpPosition = pickedUpPos;
-        grabbedBlock = grabbableBlock;
+        if(grabbableBlock.AtPurchase) {
+            logd(logId, "GrabbedBlockAtPurchase => Setting LastPosition from "+grabbableBlock.LastPosition+" to "+grabbableBlock.transform.position);
+            grabbableBlock.LastPosition = grabbableBlock.transform.position;
+        } else {
+            var pickedUpPos = grid.GetCellCenterWorld(objectCellPos);
+            pickedUpPos.y = floorHeight;
+            logd(logId, "Not GrabbedBlockAtPurchase => Setting LastPosition from "+grabbableBlock.LastPosition+" to "+pickedUpPos);
+            grabbableBlock.LastPosition = pickedUpPos;
+        }
+        GrabbedBlock = grabbableBlock;
         TargetHeight = grabbingHeight;
         grabbableBlock.GetComponent<IDraggable>()?.OnDragStart();
-        placedBlocks.Remove(grabbedBlock);
+        placedBlocks.Remove(GrabbedBlock);
         cellIndicator.SetActive(false);
     }
     public void ReleaseGrabbedBlock() {
         var logId = "ReleaseGrabbedBlock";
-        if(grabbedBlock == null) {
+        if(GrabbedBlock == null) {
             logw(logId,"GrabbedBlock is null => no-op");
             return;
         }
         bool isHoveringMap = inputManager != null && inputManager.IsHoveringMap;
-        Vector3 dropPosition = isHoveringMap ? PointedCellPosition : PickedUpPosition;
+        Vector3 dropPosition; 
+        if(isHoveringMap) {
+            dropPosition = PointedCellPosition;    
+        } else {
+            dropPosition = GrabbedBlock.LastPosition;
+        }
         var blockAtDropPosition = GetBlockAt(dropPosition);
-        var canMerge = blockAtDropPosition?.Id == grabbedBlock.Id;
-        logd(logId, "CanMerge="+canMerge+" BlockAtDropPosition="+blockAtDropPosition.logf()+" GrabbedBlock="+grabbedBlock.logf());
+        var canMerge = blockAtDropPosition?.Id == GrabbedBlock.Id;
+        logd(logId, "CanMerge="+canMerge+" DropPosition="+dropPosition+" BlockAtDropPosition="+blockAtDropPosition.logf()+" GrabbedBlock="+GrabbedBlock.logf());
         if(blockAtDropPosition==null || canMerge) {
+            if(GrabbedBlock.LastPosition!=dropPosition) {
+                GrabbedBlock?.OnDragSuccess();
+            }
             StartCoroutine(LowerGrabbedBlockRoutine(dropPosition, blockAtDropPosition));
         }
         cellIndicator.transform.position = dropPosition;
-        cellIndicator.SetActive(true);
     }
 
     private Block GetBlockAt(Vector3 position) {
@@ -182,12 +198,13 @@ public class PlacementSystem : NinjaMonoBehaviour {
 
     IEnumerator LowerGrabbedBlockRoutine(Vector3 dropPosition, Block blockToMerge=null) {
         var logId = "LowerGrabbedObjectRoutine";
-        var loweredBlock = grabbedBlock;
+        var loweredBlock = GrabbedBlock;
         var loweredBlockTransform = loweredBlock.transform;
-        grabbedBlock.GetComponent<IDraggable>()?.OnDragEnd();
-        grabbedBlock = null;
+        var draggableObj = GrabbedBlock.GetComponent<IDraggable>();
+        draggableObj?.OnDragEnd();
+        GrabbedBlock = null;
 
-        while(grabbedBlock==null || grabbedBlock.transform!=loweredBlockTransform) {
+        while(GrabbedBlock==null || GrabbedBlock.transform!=loweredBlockTransform) {
             if(loweredBlockTransform==null) {
                 logd(logId, "LoweredObjectTransform is null, probably merged => breaking");
                 yield break;
@@ -210,7 +227,7 @@ public class PlacementSystem : NinjaMonoBehaviour {
         loweredBlockTransform.position = dropPosition;
         placedBlocks.Add(loweredBlock);
     }
-    void SpawnBlock() {
+    public void SpawnBlock() {
         var logId = "SpawnBlock";
         Vector3 pointedCellPos = PointedCellPosition;
         Block newBlock = Instantiate(placeBlock, pointedCellPos, Quaternion.identity);
@@ -223,7 +240,6 @@ public class PlacementSystem : NinjaMonoBehaviour {
             logw(logId, "Tried to place null object");
             return;
         }
-
         blockToPlace.transform.position = grid.CellToWorld(TargetCellPosition);
     }
 }

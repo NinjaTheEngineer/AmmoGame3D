@@ -2,13 +2,15 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using NinjaTools;
+using System;
 
 public class InputManager : NinjaMonoBehaviour {
     [SerializeField] Camera sceneCamera;
-    Vector3 lastPosition;
     [SerializeField] LayerMask placementLayerMask;
     [SerializeField] LayerMask grabbableLayerMask;
+    [SerializeField] LayerMask interactableLayerMask;
     [SerializeField] LayerMask groundLayerMask;
+
     public Vector3 MousePosition {
         get {
             Vector3 mousePos = Input.mousePosition;
@@ -16,48 +18,48 @@ public class InputManager : NinjaMonoBehaviour {
             return mousePos;
         }
     }
-    void Awake() {
-        sceneCamera = sceneCamera??Camera.current;
+    public bool IsHoveringMap => CheckIfMouseIsHoveringMap();
+    public Vector3 GetSelectedMapPosition() => GetMouseHitPosition(placementLayerMask);
+    public Vector3 GetMouseWorldPosition() => GetMouseHitPosition(groundLayerMask);
+    public GameObject GetGrabbableObject() => GetMouseHitObject(grabbableLayerMask, typeof(IDraggable));
+    private void Update() {
+        HandleInteractableClick();
     }
-    public bool IsHoveringMap { 
-        get {
+    
+    private bool CheckIfMouseIsHoveringMap() {
+        Ray ray = sceneCamera.ScreenPointToRay(MousePosition);
+        return Physics.Raycast(ray, 100, placementLayerMask);
+    }
+
+    private Vector3 GetMouseHitPosition(LayerMask layerMask) {
+        Ray ray = sceneCamera.ScreenPointToRay(MousePosition);
+        RaycastHit hit;
+        if (Physics.Raycast(ray, out hit, 100, layerMask))
+            return hit.point;
+
+        return Vector3.zero;
+    }
+
+    private GameObject GetMouseHitObject(LayerMask layerMask, Type componentType) {
+        Ray ray = sceneCamera.ScreenPointToRay(MousePosition);
+        RaycastHit hit;
+        if (Physics.Raycast(ray, out hit, 100, layerMask)) {
+            GameObject hitObject = hit.collider.gameObject;
+            if (hitObject.GetComponent(componentType) != null)
+                return hitObject;
+        }
+
+        return null;
+    }
+
+    private void HandleInteractableClick() {
+        if (Input.GetMouseButtonDown(0)) {
             Ray ray = sceneCamera.ScreenPointToRay(MousePosition);
             RaycastHit hit;
-            if(Physics.Raycast(ray, out hit, 100, placementLayerMask)) {
-                return true;
+            if (Physics.Raycast(ray, out hit, 100, interactableLayerMask)) {
+                var interactableObject = hit.collider.gameObject.GetComponent<IButton>();
+                interactableObject?.OnButtonClick();
             }
-            return false;
         }
-    }
-    public Vector3 GetSelectedMapPosition() {
-        Ray ray = sceneCamera.ScreenPointToRay(MousePosition);
-        RaycastHit hit;
-        if(Physics.Raycast(ray, out hit, 100, placementLayerMask)) {
-            lastPosition = hit.point;
-        }
-        return lastPosition;
-    }
-    Vector3 mouseWorldPosition = Vector3.zero;
-    public Vector3 GetMouseWorldPosition() {
-        Ray ray = sceneCamera.ScreenPointToRay(MousePosition);
-        RaycastHit hit;
-        if(Physics.Raycast(ray, out hit, 100, groundLayerMask)) {
-            mouseWorldPosition = hit.point;
-        }
-        return mouseWorldPosition;
-    }
-    public GameObject GetGrabbableObject() {
-        var logId = "GetGrabbableObject";
-        Ray ray = sceneCamera.ScreenPointToRay(MousePosition);
-        RaycastHit hit;
-        GameObject grabbableObject = null;
-        if(Physics.Raycast(ray, out hit, 100, grabbableLayerMask)) {
-            var hitGameObject = hit.collider.gameObject;
-            if(hitGameObject.GetComponent<IDraggable>()!=null) {
-                grabbableObject = hitGameObject;
-            }
-            logd(logId, "Ray="+ray.logf()+" HitGameObject="+hitGameObject.logf()+" GrabbableObject="+grabbableObject.logf(), true);
-        }
-        return grabbableObject;
     }
 }

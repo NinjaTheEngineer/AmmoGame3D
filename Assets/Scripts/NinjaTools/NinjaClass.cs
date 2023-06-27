@@ -2,13 +2,13 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 namespace NinjaTools {
-    public class NinjaMonoBehaviour : MonoBehaviour {
+    public class NinjaClass {
         Dictionary<string, string> lastIdMessage = new Dictionary<string, string>();
         public void logd(string id, string message, bool ignoreDuplicates=false) {
             if(ignoreDuplicates && lastIdMessage.ContainsKey(id) && lastIdMessage[id]==message) {
                 return;
             }
-            Debug.Log(name + "::" + id + "->" + message, this);
+            Debug.Log(this.logf()+"::" + id + "->" + message);
             if(lastIdMessage.ContainsKey(id)) {
                 lastIdMessage[id] = message;
             } else {
@@ -20,7 +20,7 @@ namespace NinjaTools {
             if(ignoreDuplicates && lastIdMessage.ContainsKey(id) && lastIdMessage[id]==message) {
                 return;
             }
-            Debug.LogWarning(name + "::" + id + "->" + message, this);
+            Debug.LogWarning(this.logf()+"::" + id + "->" + message);
             if(lastIdMessage.ContainsKey(id)) {
                 lastIdMessage[id] = message;
             } else {
@@ -32,7 +32,7 @@ namespace NinjaTools {
             if(ignoreDuplicates && lastIdMessage.ContainsKey(id) && lastIdMessage[id]==message) {
                 return;
             }
-            Debug.LogError(name + "::" + id + "->" + message, this);
+            Debug.LogError(this.logf()+"::" + id + "->" + message);
             if(lastIdMessage.ContainsKey(id)) {
                 lastIdMessage[id] = message;
             } else {
